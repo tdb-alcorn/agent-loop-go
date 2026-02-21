@@ -61,9 +61,14 @@ type AgentLoopOption func(*agentLoopConfig)
 // LogFunc is called for each new message as it is produced during the loop.
 type LogFunc func(Message)
 
+// CompactFunc reduces a session before each model invocation to limit token
+// bloat from accumulated history.  Pass nil via WithCompactor to disable.
+type CompactFunc func(Session) Session
+
 type agentLoopConfig struct {
 	maxIterations int
 	logFunc       LogFunc
+	compactFunc   CompactFunc
 }
 
 // WithMaxIterations sets the maximum number of model invocations before the
@@ -78,6 +83,63 @@ func WithLogger(fn LogFunc) AgentLoopOption {
 	return func(c *agentLoopConfig) { c.logFunc = fn }
 }
 
+// WithCompactor overrides the session compaction function.  Pass nil to
+// disable compaction entirely.
+func WithCompactor(fn CompactFunc) AgentLoopOption {
+	return func(c *agentLoopConfig) { c.compactFunc = fn }
+}
+
+// defaultCompactor returns a CompactFunc that truncates ThinkingMessage,
+// ToolCallMessage, and ToolResultMessage content once at least two assistant
+// responses have appeared after them in the session.  A per-call index set
+// prevents re-processing already-compacted messages on subsequent invocations.
+func defaultCompactor() CompactFunc {
+	const (
+		assistantThreshold = 2   // assistant turns that must follow before compacting
+		prefixLen          = 200 // bytes to keep from each compacted message
+	)
+	compacted := make(map[int]bool)
+
+	return func(s Session) Session {
+		assistantsSeen := 0
+		for i := len(s.Messages) - 1; i >= 0; i-- {
+			switch m := s.Messages[i].(type) {
+			case AssistantMessage:
+				assistantsSeen++
+			case ThinkingMessage:
+				if compacted[i] || assistantsSeen < assistantThreshold {
+					continue
+				}
+				if len(m.Content) > prefixLen {
+					s.Messages[i] = ThinkingMessage{Content: m.Content[:prefixLen] + "…"}
+				}
+				compacted[i] = true
+			case ToolCallMessage:
+				if compacted[i] || assistantsSeen < assistantThreshold {
+					continue
+				}
+				raw := string(m.Input)
+				if len(raw) > prefixLen {
+					truncated, _ := json.Marshal(raw[:prefixLen] + "…")
+					m.Input = truncated
+					s.Messages[i] = m
+				}
+				compacted[i] = true
+			case ToolResultMessage:
+				if compacted[i] || assistantsSeen < assistantThreshold {
+					continue
+				}
+				if len(m.Output) > prefixLen {
+					m.Output = m.Output[:prefixLen] + "…"
+					s.Messages[i] = m
+				}
+				compacted[i] = true
+			}
+		}
+		return s
+	}
+}
+
 // AgentLoop drives the model in a loop until it produces a response with no
 // tool calls (guide section 5).  The updated session is returned.
 //
@@ -85,7 +147,7 @@ func WithLogger(fn LogFunc) AgentLoopOption {
 // tools provides both the definitions passed to invokeModel and the handler
 // functions used to execute them.
 func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, session Session, opts ...AgentLoopOption) (Session, error) {
-	cfg := &agentLoopConfig{maxIterations: 30}
+	cfg := &agentLoopConfig{maxIterations: 30, compactFunc: defaultCompactor()}
 	for _, o := range opts {
 		o(cfg)
 	}
@@ -99,6 +161,10 @@ func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, s
 	}
 
 	for i := range cfg.maxIterations {
+		if cfg.compactFunc != nil {
+			session = cfg.compactFunc(session)
+		}
+
 		newMsgs, err := invokeModel(ctx, defs, session)
 		if err != nil {
 			return session, err
