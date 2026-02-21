@@ -1,4 +1,4 @@
-module agent-loop-go
+module github.com/tdb-alcorn/agent-loop-go
 
 go 1.24.6
 
