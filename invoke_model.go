@@ -6,17 +6,23 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
+// Usage holds token consumption figures from a single model invocation.
+type Usage struct {
+	InputTokens  int64
+	OutputTokens int64
+}
+
 // InvokeModelFunc is the generic model invocation interface used by AgentLoop.
 // Implementations receive the tools the model may call and the current session,
-// and return the new messages produced by the response.
-type InvokeModelFunc func(ctx context.Context, tools []ToolDefinition, session Session) ([]Message, error)
+// and return the new messages and token usage produced by the response.
+type InvokeModelFunc func(ctx context.Context, tools []ToolDefinition, session Session) ([]Message, Usage, error)
 
 // InvokeClaude returns an InvokeModelFunc backed by a new Anthropic Claude
 // client created from ANTHROPIC_API_KEY in the environment.  Any opts
 // (e.g. WithMaxTokens, WithThinking) are applied on every call.
 func InvokeClaude(opts ...Option) InvokeModelFunc {
 	client := NewClaude()
-	return func(ctx context.Context, tools []ToolDefinition, session Session) ([]Message, error) {
+	return func(ctx context.Context, tools []ToolDefinition, session Session) ([]Message, Usage, error) {
 		return invokeClaude(ctx, client, tools, session, opts...)
 	}
 }
@@ -34,7 +40,7 @@ func InvokeClaude(opts ...Option) InvokeModelFunc {
 //   - ToolResultMessage    → user turn, tool_result block
 //
 // Consecutive messages of the same role are merged into a single turn.
-func invokeClaude(ctx context.Context, client *Claude, tools []ToolDefinition, session Session, opts ...Option) ([]Message, error) {
+func invokeClaude(ctx context.Context, client *Claude, tools []ToolDefinition, session Session, opts ...Option) ([]Message, Usage, error) {
 	system, messages := buildParams(session)
 
 	cfg := &completeConfig{
@@ -62,9 +68,13 @@ func invokeClaude(ctx context.Context, client *Claude, tools []ToolDefinition, s
 
 	resp, err := client.api.Messages.New(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, Usage{}, err
 	}
-	return responseToMessages(resp), nil
+	usage := Usage{
+		InputTokens:  resp.Usage.InputTokens,
+		OutputTokens: resp.Usage.OutputTokens,
+	}
+	return responseToMessages(resp), usage, nil
 }
 
 // buildParams converts a Session into the system blocks and message turns

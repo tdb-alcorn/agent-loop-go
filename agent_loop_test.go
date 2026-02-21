@@ -8,6 +8,122 @@ import (
 	"testing"
 )
 
+// noopTool is a trivial tool used by tests that need the loop to keep running.
+var noopTool = Tool{
+	Definition: ToolDefinition{
+		Name:        "noop",
+		InputSchema: ToolInputSchema{Type: "object"},
+	},
+	Handler: func(json.RawMessage) (string, error) { return "ok", nil },
+}
+
+// mockInvoker builds an InvokeModelFunc from a fixed response sequence.
+// Each entry is returned in order; once exhausted a terminal AssistantMessage
+// with zero usage is returned.
+func mockInvoker(seq []struct {
+	msgs  []Message
+	usage Usage
+}) InvokeModelFunc {
+	i := 0
+	return func(ctx context.Context, _ []ToolDefinition, _ Session) ([]Message, Usage, error) {
+		if i >= len(seq) {
+			return []Message{AssistantMessage{"done"}}, Usage{}, nil
+		}
+		e := seq[i]
+		i++
+		return e.msgs, e.usage, nil
+	}
+}
+
+// TestUsageCheckerHalts confirms that the loop stops before making a second
+// model call when the usage checker returns true.
+func TestUsageCheckerHalts(t *testing.T) {
+	callCount := 0
+	invoker := func(ctx context.Context, _ []ToolDefinition, _ Session) ([]Message, Usage, error) {
+		callCount++
+		return []Message{
+			ToolCallMessage{ID: fmt.Sprintf("c%d", callCount), Name: "noop", Input: json.RawMessage(`{}`)},
+		}, Usage{InputTokens: 100, OutputTokens: 50}, nil
+	}
+
+	var received []Usage
+	checker := func(u Usage) bool {
+		received = append(received, u)
+		return u.InputTokens > 0 // halt as soon as any tokens have been spent
+	}
+
+	session := InitSession("sys", "user")
+	_, err := AgentLoop(context.Background(), invoker, []Tool{noopTool}, session,
+		WithUsageChecker(checker),
+		WithCompactor(nil),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Checker called twice: {0,0}→continue, {100,50}→halt.
+	wantReceived := []Usage{{0, 0}, {100, 50}}
+	if len(received) != len(wantReceived) {
+		t.Fatalf("checker called %d time(s), want %d; got %v", len(received), len(wantReceived), received)
+	}
+	for i, got := range received {
+		if got != wantReceived[i] {
+			t.Errorf("checker call %d: got %+v, want %+v", i, got, wantReceived[i])
+		}
+	}
+
+	// Only one model invocation before the halt.
+	if callCount != 1 {
+		t.Errorf("model called %d time(s), want 1", callCount)
+	}
+}
+
+// TestUsageCheckerAccumulates verifies that token counts from successive
+// invocations are summed correctly before each checker call.
+func TestUsageCheckerAccumulates(t *testing.T) {
+	tc := func(id string) ToolCallMessage {
+		return ToolCallMessage{ID: id, Name: "noop", Input: json.RawMessage(`{}`)}
+	}
+	invoker := mockInvoker([]struct {
+		msgs  []Message
+		usage Usage
+	}{
+		{[]Message{tc("c1")}, Usage{100, 40}},
+		{[]Message{tc("c2")}, Usage{200, 80}},
+		{[]Message{AssistantMessage{"done"}}, Usage{50, 20}},
+	})
+
+	var received []Usage
+	checker := func(u Usage) bool {
+		received = append(received, u)
+		return false
+	}
+
+	session := InitSession("sys", "user")
+	_, err := AgentLoop(context.Background(), invoker, []Tool{noopTool}, session,
+		WithUsageChecker(checker),
+		WithCompactor(nil),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Three iterations → checker called three times with running totals.
+	wantReceived := []Usage{
+		{0, 0},    // before iter 1
+		{100, 40}, // before iter 2
+		{300, 120}, // before iter 3
+	}
+	if len(received) != len(wantReceived) {
+		t.Fatalf("checker called %d time(s), want %d; got %v", len(received), len(wantReceived), received)
+	}
+	for i, got := range received {
+		if got != wantReceived[i] {
+			t.Errorf("checker call %d: got %+v, want %+v", i, got, wantReceived[i])
+		}
+	}
+}
+
 // TestDefaultCompactor verifies the behaviour of the default session compactor.
 //
 // Session layout (indices after Add):

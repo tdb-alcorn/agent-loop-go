@@ -65,10 +65,15 @@ type LogFunc func(Message)
 // bloat from accumulated history.  Pass nil via WithCompactor to disable.
 type CompactFunc func(Session) Session
 
+// UsageFunc is called at the start of each iteration with cumulative token
+// usage across all prior iterations.  Returning true stops the loop.
+type UsageFunc func(Usage) bool
+
 type agentLoopConfig struct {
 	maxIterations int
 	logFunc       LogFunc
 	compactFunc   CompactFunc
+	usageFunc     UsageFunc
 }
 
 // WithMaxIterations sets the maximum number of model invocations before the
@@ -87,6 +92,13 @@ func WithLogger(fn LogFunc) AgentLoopOption {
 // disable compaction entirely.
 func WithCompactor(fn CompactFunc) AgentLoopOption {
 	return func(c *agentLoopConfig) { c.compactFunc = fn }
+}
+
+// WithUsageChecker sets a function called at the start of each iteration with
+// the cumulative token usage from all prior iterations.  Returning true halts
+// the loop before the next model invocation.
+func WithUsageChecker(fn UsageFunc) AgentLoopOption {
+	return func(c *agentLoopConfig) { c.usageFunc = fn }
 }
 
 // defaultCompactor returns a CompactFunc that truncates ThinkingMessage,
@@ -160,15 +172,22 @@ func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, s
 		handlers[t.Definition.Name] = t.Handler
 	}
 
+	var totalUsage Usage
 	for i := range cfg.maxIterations {
+		if cfg.usageFunc != nil && cfg.usageFunc(totalUsage) {
+			break
+		}
+
 		if cfg.compactFunc != nil {
 			session = cfg.compactFunc(session)
 		}
 
-		newMsgs, err := invokeModel(ctx, defs, session)
+		newMsgs, usage, err := invokeModel(ctx, defs, session)
 		if err != nil {
 			return session, err
 		}
+		totalUsage.InputTokens += usage.InputTokens
+		totalUsage.OutputTokens += usage.OutputTokens
 		session.Add(newMsgs...)
 		if cfg.logFunc != nil {
 			for _, m := range newMsgs {

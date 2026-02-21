@@ -6,6 +6,30 @@ import (
 	"testing"
 )
 
+// TestInvokeClaudeReturnsUsage confirms that a real API call populates both
+// InputTokens and OutputTokens in the returned Usage.
+func TestInvokeClaudeReturnsUsage(t *testing.T) {
+	skipIfNoKey(t)
+
+	session := Session{}
+	session.Add(
+		SystemMessage{"You are a helpful assistant."},
+		UserMessage{"Say hi."},
+	)
+
+	_, usage, err := InvokeClaude()(context.Background(), nil, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.InputTokens == 0 {
+		t.Error("expected non-zero InputTokens")
+	}
+	if usage.OutputTokens == 0 {
+		t.Error("expected non-zero OutputTokens")
+	}
+	t.Logf("usage: input=%d output=%d", usage.InputTokens, usage.OutputTokens)
+}
+
 // TestInvokeModelHelloWorld sends a minimal single-turn session and checks
 // that we get a non-empty assistant reply.
 func TestInvokeModelHelloWorld(t *testing.T) {
@@ -17,7 +41,7 @@ func TestInvokeModelHelloWorld(t *testing.T) {
 		UserMessage{"Say hello world."},
 	)
 
-	msgs, err := InvokeClaude()(context.Background(), nil, session)
+	msgs, _, err := InvokeClaude()(context.Background(), nil, session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +71,7 @@ func TestInvokeModelMultiTurn(t *testing.T) {
 		UserMessage{"What did I just tell you my name was?"},
 	)
 
-	msgs, err := InvokeClaude()(context.Background(), nil, session)
+	msgs, _, err := InvokeClaude()(context.Background(), nil, session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +145,7 @@ func TestInvokeModelAllTypes(t *testing.T) {
 		},
 	)
 
-	msgs, err := InvokeClaude()(context.Background(), []ToolDefinition{weatherTool}, session)
+	msgs, _, err := InvokeClaude()(context.Background(), []ToolDefinition{weatherTool}, session)
 	if err != nil {
 		t.Fatal(err)
 	}
