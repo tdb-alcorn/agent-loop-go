@@ -1,0 +1,5 @@
+# secrets
+.env
+
+# binaries
+agent-loop-go
