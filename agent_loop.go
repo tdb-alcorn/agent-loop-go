@@ -55,13 +55,41 @@ func ExecuteToolCalls(calls []ToolCallMessage, handlers map[string]ToolHandler) 
 	return results
 }
 
+// AgentLoopOption configures a single AgentLoop call.
+type AgentLoopOption func(*agentLoopConfig)
+
+// LogFunc is called for each new message as it is produced during the loop.
+type LogFunc func(Message)
+
+type agentLoopConfig struct {
+	maxIterations int
+	logFunc       LogFunc
+}
+
+// WithMaxIterations sets the maximum number of model invocations before the
+// loop is terminated with an error.
+func WithMaxIterations(n int) AgentLoopOption {
+	return func(c *agentLoopConfig) { c.maxIterations = n }
+}
+
+// WithLogger sets a function that is called for each new message as it is
+// produced — model responses (text, thinking, tool calls) and tool results.
+func WithLogger(fn LogFunc) AgentLoopOption {
+	return func(c *agentLoopConfig) { c.logFunc = fn }
+}
+
 // AgentLoop drives the model in a loop until it produces a response with no
 // tool calls (guide section 5).  The updated session is returned.
 //
 // invokeModel is the model invocation function (e.g. InvokeClaude()).
 // tools provides both the definitions passed to invokeModel and the handler
 // functions used to execute them.
-func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, session Session) (Session, error) {
+func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, session Session, opts ...AgentLoopOption) (Session, error) {
+	cfg := &agentLoopConfig{maxIterations: 30}
+	for _, o := range opts {
+		o(cfg)
+	}
+
 	// Build a definition slice (for the API) and a handler map (for dispatch).
 	defs := make([]ToolDefinition, len(tools))
 	handlers := make(map[string]ToolHandler, len(tools))
@@ -70,12 +98,17 @@ func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, s
 		handlers[t.Definition.Name] = t.Handler
 	}
 
-	for {
+	for i := range cfg.maxIterations {
 		newMsgs, err := invokeModel(ctx, defs, session)
 		if err != nil {
 			return session, err
 		}
 		session.Add(newMsgs...)
+		if cfg.logFunc != nil {
+			for _, m := range newMsgs {
+				cfg.logFunc(m)
+			}
+		}
 
 		// Collect tool calls from this turn.
 		var toolCalls []ToolCallMessage
@@ -90,8 +123,17 @@ func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, s
 			break
 		}
 
+		if i == cfg.maxIterations-1 {
+			return session, fmt.Errorf("agent loop reached maximum iterations (%d)", cfg.maxIterations)
+		}
+
 		results := ExecuteToolCalls(toolCalls, handlers)
 		session.Add(results...)
+		if cfg.logFunc != nil {
+			for _, m := range results {
+				cfg.logFunc(m)
+			}
+		}
 	}
 
 	return session, nil
