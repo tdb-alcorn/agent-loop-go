@@ -1,11 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
@@ -13,36 +11,8 @@ import (
 
 // TestMain loads .env before running any tests.
 func TestMain(m *testing.M) {
-	loadDotEnv(".env")
+	LoadDotEnv(".env")
 	os.Exit(m.Run())
-}
-
-// loadDotEnv reads KEY=VALUE pairs from path and calls os.Setenv for each.
-// Lines starting with '#' and blank lines are ignored.
-// Existing env vars are not overwritten.
-func loadDotEnv(path string) {
-	f, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, val, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		key = strings.TrimSpace(key)
-		val = strings.TrimSpace(val)
-		if os.Getenv(key) == "" {
-			os.Setenv(key, val)
-		}
-	}
 }
 
 // skipIfNoKey skips the test when ANTHROPIC_API_KEY is not set.
