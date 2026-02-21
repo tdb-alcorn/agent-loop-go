@@ -166,6 +166,22 @@ func UnmarshalMessage(data []byte) (Message, error) {
 	}
 }
 
+// -- Tool definition ----------------------------------------------------
+
+// ToolInputSchema describes the JSON schema for a tool's input parameters.
+type ToolInputSchema struct {
+	Type       string         `json:"type"`
+	Properties map[string]any `json:"properties,omitempty"`
+	Required   []string       `json:"required,omitempty"`
+}
+
+// ToolDefinition is a vendor-agnostic description of a tool the model may call.
+type ToolDefinition struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema ToolInputSchema `json:"input_schema"`
+}
+
 // -- Session ------------------------------------------------------------
 
 // Session is an ordered conversation history.

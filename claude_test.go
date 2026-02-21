@@ -77,9 +77,11 @@ func TestWithTools(t *testing.T) {
 	client := NewClient()
 	ctx := context.Background()
 
-	// Build a tool definition using the SDK constructor.
-	weatherTool := anthropic.ToolUnionParamOfTool(
-		anthropic.ToolInputSchemaParam{
+	weatherTool := ToolDefinition{
+		Name:        "get_weather",
+		Description: "Get the current weather for a location",
+		InputSchema: ToolInputSchema{
+			Type: "object",
 			Properties: map[string]any{
 				"location": map[string]any{
 					"type":        "string",
@@ -93,9 +95,7 @@ func TestWithTools(t *testing.T) {
 			},
 			Required: []string{"location"},
 		},
-		"get_weather",
-	)
-	weatherTool.OfTool.Description = anthropic.String("Get the current weather for a location")
+	}
 
 	msg, err := client.Complete(ctx,
 		"What's the weather like in Tokyo?",

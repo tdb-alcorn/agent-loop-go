@@ -41,7 +41,7 @@ func InvokeModel(ctx context.Context, client *Client, session Session, opts ...O
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(*cfg.thinking)
 	}
 	if len(cfg.tools) > 0 {
-		params.Tools = cfg.tools
+		params.Tools = toolDefsToParams(cfg.tools)
 	}
 
 	resp, err := client.api.Messages.New(ctx, params)
@@ -98,6 +98,25 @@ func toBlock(msg Message) (anthropic.MessageParamRole, anthropic.ContentBlockPar
 		// SystemMessage is handled before this call; ThinkingMessage is skipped.
 		return "", anthropic.ContentBlockParamUnion{}, false
 	}
+}
+
+// toolDefsToParams converts a slice of generic ToolDefinitions to Anthropic API params.
+func toolDefsToParams(defs []ToolDefinition) []anthropic.ToolUnionParam {
+	params := make([]anthropic.ToolUnionParam, len(defs))
+	for i, def := range defs {
+		t := anthropic.ToolUnionParamOfTool(
+			anthropic.ToolInputSchemaParam{
+				Properties: def.InputSchema.Properties,
+				Required:   def.InputSchema.Required,
+			},
+			def.Name,
+		)
+		if def.Description != "" {
+			t.OfTool.Description = anthropic.String(def.Description)
+		}
+		params[i] = t
+	}
+	return params
 }
 
 // responseToMessages converts an Anthropic API response into session Messages.

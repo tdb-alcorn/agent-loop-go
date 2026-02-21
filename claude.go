@@ -27,7 +27,7 @@ type completeConfig struct {
 	maxTokens int64
 	system    string
 	thinking  *int64 // budget tokens; nil = disabled
-	tools     []anthropic.ToolUnionParam
+	tools     []ToolDefinition
 }
 
 // Option configures a single Complete call.
@@ -55,7 +55,7 @@ func WithThinking(budgetTokens int64) Option {
 }
 
 // WithTools provides tool definitions the model may call.
-func WithTools(tools ...anthropic.ToolUnionParam) Option {
+func WithTools(tools ...ToolDefinition) Option {
 	return func(c *completeConfig) { c.tools = tools }
 }
 
@@ -83,7 +83,7 @@ func (c *Client) Complete(ctx context.Context, prompt string, opts ...Option) (*
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(*cfg.thinking)
 	}
 	if len(cfg.tools) > 0 {
-		params.Tools = cfg.tools
+		params.Tools = toolDefsToParams(cfg.tools)
 	}
 
 	return c.api.Messages.New(ctx, params)

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
-
-	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
 // ToolHandler processes a single tool call and returns a result string.
@@ -14,11 +12,9 @@ import (
 // in the session rather than failing the agent loop.
 type ToolHandler func(input json.RawMessage) (string, error)
 
-// Tool pairs an Anthropic tool definition with its handler function.
-// Name must match the name embedded in Definition.
+// Tool pairs a generic tool definition with its handler function.
 type Tool struct {
-	Name       string
-	Definition anthropic.ToolUnionParam
+	Definition ToolDefinition
 	Handler    ToolHandler
 }
 
@@ -67,11 +63,11 @@ func ExecuteToolCalls(calls []ToolCallMessage, handlers map[string]ToolHandler) 
 // InvokeModel on every iteration (e.g. WithMaxTokens, WithThinking).
 func AgentLoop(ctx context.Context, client *Client, tools []Tool, session Session, opts ...Option) (Session, error) {
 	// Build a definition slice (for the API) and a handler map (for dispatch).
-	defs := make([]anthropic.ToolUnionParam, len(tools))
+	defs := make([]ToolDefinition, len(tools))
 	handlers := make(map[string]ToolHandler, len(tools))
 	for i, t := range tools {
 		defs[i] = t.Definition
-		handlers[t.Name] = t.Handler
+		handlers[t.Definition.Name] = t.Handler
 	}
 
 	// Prepend tool definitions to every InvokeModel call.

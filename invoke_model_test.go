@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-
-	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
 // TestInvokeModelHelloWorld sends a minimal single-turn session and checks
@@ -88,8 +86,11 @@ func TestInvokeModelMultiTurn(t *testing.T) {
 func TestInvokeModelAllTypes(t *testing.T) {
 	skipIfNoKey(t)
 
-	weatherTool := anthropic.ToolUnionParamOfTool(
-		anthropic.ToolInputSchemaParam{
+	weatherTool := ToolDefinition{
+		Name:        "get_weather",
+		Description: "Get the current weather for a city",
+		InputSchema: ToolInputSchema{
+			Type: "object",
 			Properties: map[string]any{
 				"location": map[string]any{
 					"type":        "string",
@@ -98,9 +99,7 @@ func TestInvokeModelAllTypes(t *testing.T) {
 			},
 			Required: []string{"location"},
 		},
-		"get_weather",
-	)
-	weatherTool.OfTool.Description = anthropic.String("Get the current weather for a city")
+	}
 
 	session := Session{}
 	session.Add(

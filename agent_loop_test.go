@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
 // TestAgentLoopAddition runs a single-tool agent loop and confirms the model
@@ -15,21 +13,19 @@ import (
 func TestAgentLoopAddition(t *testing.T) {
 	skipIfNoKey(t)
 
-	toolDef := anthropic.ToolUnionParamOfTool(
-		anthropic.ToolInputSchemaParam{
-			Properties: map[string]any{
-				"a": map[string]any{"type": "number", "description": "First operand"},
-				"b": map[string]any{"type": "number", "description": "Second operand"},
-			},
-			Required: []string{"a", "b"},
-		},
-		"add",
-	)
-	toolDef.OfTool.Description = anthropic.String("Add two numbers and return their sum.")
-
 	addTool := Tool{
-		Name:       "add",
-		Definition: toolDef,
+		Definition: ToolDefinition{
+			Name:        "add",
+			Description: "Add two numbers and return their sum.",
+			InputSchema: ToolInputSchema{
+				Type: "object",
+				Properties: map[string]any{
+					"a": map[string]any{"type": "number", "description": "First operand"},
+					"b": map[string]any{"type": "number", "description": "Second operand"},
+				},
+				Required: []string{"a", "b"},
+			},
+		},
 		Handler: func(input json.RawMessage) (string, error) {
 			var args struct {
 				A float64 `json:"a"`
