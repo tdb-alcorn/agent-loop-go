@@ -27,7 +27,7 @@ func skipIfNoKey(t *testing.T) {
 func TestHelloWorld(t *testing.T) {
 	skipIfNoKey(t)
 
-	client := NewClient()
+	client := NewClaude()
 	ctx := context.Background()
 
 	msg, err := client.Complete(ctx, `Say exactly: "Hello, World!"`)
@@ -44,7 +44,7 @@ func TestHelloWorld(t *testing.T) {
 func TestThinking(t *testing.T) {
 	skipIfNoKey(t)
 
-	client := NewClient()
+	client := NewClaude()
 	ctx := context.Background()
 
 	// Thinking requires max_tokens > budget_tokens. Budget must be >= 1024.
@@ -74,7 +74,7 @@ func TestThinking(t *testing.T) {
 func TestWithTools(t *testing.T) {
 	skipIfNoKey(t)
 
-	client := NewClient()
+	client := NewClaude()
 	ctx := context.Background()
 
 	weatherTool := ToolDefinition{

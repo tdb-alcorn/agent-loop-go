@@ -58,10 +58,10 @@ func ExecuteToolCalls(calls []ToolCallMessage, handlers map[string]ToolHandler) 
 // AgentLoop drives the model in a loop until it produces a response with no
 // tool calls (guide section 5).  The updated session is returned.
 //
-// tools provides both the definitions passed to the model and the handler
-// functions used to execute them.  Additional opts are forwarded to
-// InvokeModel on every iteration (e.g. WithMaxTokens, WithThinking).
-func AgentLoop(ctx context.Context, client *Client, tools []Tool, session Session, opts ...Option) (Session, error) {
+// invokeModel is the model invocation function (e.g. InvokeClaude()).
+// tools provides both the definitions passed to invokeModel and the handler
+// functions used to execute them.
+func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, session Session) (Session, error) {
 	// Build a definition slice (for the API) and a handler map (for dispatch).
 	defs := make([]ToolDefinition, len(tools))
 	handlers := make(map[string]ToolHandler, len(tools))
@@ -70,15 +70,8 @@ func AgentLoop(ctx context.Context, client *Client, tools []Tool, session Sessio
 		handlers[t.Definition.Name] = t.Handler
 	}
 
-	// Prepend tool definitions to every InvokeModel call.
-	callOpts := make([]Option, 0, len(opts)+1)
-	if len(defs) > 0 {
-		callOpts = append(callOpts, WithTools(defs...))
-	}
-	callOpts = append(callOpts, opts...)
-
 	for {
-		newMsgs, err := InvokeModel(ctx, client, session, callOpts...)
+		newMsgs, err := invokeModel(ctx, defs, session)
 		if err != nil {
 			return session, err
 		}

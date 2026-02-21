@@ -7,15 +7,15 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
-// Client wraps the Anthropic API with sensible defaults.
-type Client struct {
+// Claude wraps the Anthropic API with sensible defaults.
+type Claude struct {
 	api   anthropic.Client
 	model anthropic.Model
 }
 
-// NewClient creates a Client using ANTHROPIC_API_KEY from the environment.
-func NewClient(opts ...option.RequestOption) *Client {
-	return &Client{
+// NewClaude creates a Claude client using ANTHROPIC_API_KEY from the environment.
+func NewClaude(opts ...option.RequestOption) *Claude {
+	return &Claude{
 		api:   anthropic.NewClient(opts...),
 		model: anthropic.ModelClaudeSonnet4_6,
 	}
@@ -60,7 +60,7 @@ func WithTools(tools ...ToolDefinition) Option {
 }
 
 // Complete sends a single user message and returns the model's response.
-func (c *Client) Complete(ctx context.Context, prompt string, opts ...Option) (*anthropic.Message, error) {
+func (c *Claude) Complete(ctx context.Context, prompt string, opts ...Option) (*anthropic.Message, error) {
 	cfg := &completeConfig{
 		model:     c.model,
 		maxTokens: 1024,

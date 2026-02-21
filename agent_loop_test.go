@@ -43,7 +43,7 @@ func TestAgentLoopAddition(t *testing.T) {
 		"What is 1234 + 5678?",
 	)
 
-	session, err := AgentLoop(context.Background(), NewClient(), []Tool{addTool}, session)
+	session, err := AgentLoop(context.Background(), InvokeClaude(), []Tool{addTool}, session)
 	if err != nil {
 		t.Fatal(err)
 	}

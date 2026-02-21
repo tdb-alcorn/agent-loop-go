@@ -17,7 +17,7 @@ func TestInvokeModelHelloWorld(t *testing.T) {
 		UserMessage{"Say hello world."},
 	)
 
-	msgs, err := InvokeModel(context.Background(), NewClient(), session)
+	msgs, err := InvokeClaude()(context.Background(), nil, session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestInvokeModelMultiTurn(t *testing.T) {
 		UserMessage{"What did I just tell you my name was?"},
 	)
 
-	msgs, err := InvokeModel(context.Background(), NewClient(), session)
+	msgs, err := InvokeClaude()(context.Background(), nil, session)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestInvokeModelMultiTurn(t *testing.T) {
 }
 
 // TestInvokeModelAllTypes builds a session containing every message type and
-// calls InvokeModel to confirm it processes the history without error.
+// calls InvokeClaude to confirm it processes the history without error.
 //
 // Session history:
 //
@@ -82,7 +82,7 @@ func TestInvokeModelMultiTurn(t *testing.T) {
 //	ToolCallMessage    – model requested a tool
 //	ToolResultMessage  – result we are providing
 //
-// InvokeModel is expected to return the assistant's final answer.
+// InvokeClaude is expected to return the assistant's final answer.
 func TestInvokeModelAllTypes(t *testing.T) {
 	skipIfNoKey(t)
 
@@ -121,9 +121,7 @@ func TestInvokeModelAllTypes(t *testing.T) {
 		},
 	)
 
-	msgs, err := InvokeModel(context.Background(), NewClient(), session,
-		WithTools(weatherTool),
-	)
+	msgs, err := InvokeClaude()(context.Background(), []ToolDefinition{weatherTool}, session)
 	if err != nil {
 		t.Fatal(err)
 	}

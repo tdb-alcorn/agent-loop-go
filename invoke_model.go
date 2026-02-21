@@ -6,8 +6,24 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 )
 
-// InvokeModel converts session into Anthropic API params, calls the model,
-// and returns the new messages produced by the response.
+// InvokeModelFunc is the generic model invocation interface used by AgentLoop.
+// Implementations receive the tools the model may call and the current session,
+// and return the new messages produced by the response.
+type InvokeModelFunc func(ctx context.Context, tools []ToolDefinition, session Session) ([]Message, error)
+
+// InvokeClaude returns an InvokeModelFunc backed by a new Anthropic Claude
+// client created from ANTHROPIC_API_KEY in the environment.  Any opts
+// (e.g. WithMaxTokens, WithThinking) are applied on every call.
+func InvokeClaude(opts ...Option) InvokeModelFunc {
+	client := NewClaude()
+	return func(ctx context.Context, tools []ToolDefinition, session Session) ([]Message, error) {
+		return invokeClaude(ctx, client, tools, session, opts...)
+	}
+}
+
+// invokeClaude is the internal implementation.  It accepts an explicit client
+// so that tests can inject a pre-configured one without exposing the client to
+// callers of the exported API.
 //
 // Conversion rules:
 //   - SystemMessage        → params.System (TextBlockParam)
@@ -18,7 +34,7 @@ import (
 //   - ToolResultMessage    → user turn, tool_result block
 //
 // Consecutive messages of the same role are merged into a single turn.
-func InvokeModel(ctx context.Context, client *Client, session Session, opts ...Option) ([]Message, error) {
+func invokeClaude(ctx context.Context, client *Claude, tools []ToolDefinition, session Session, opts ...Option) ([]Message, error) {
 	system, messages := buildParams(session)
 
 	cfg := &completeConfig{
@@ -40,8 +56,8 @@ func InvokeModel(ctx context.Context, client *Client, session Session, opts ...O
 	if cfg.thinking != nil {
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(*cfg.thinking)
 	}
-	if len(cfg.tools) > 0 {
-		params.Tools = toolDefsToParams(cfg.tools)
+	if len(tools) > 0 {
+		params.Tools = toolDefsToParams(tools)
 	}
 
 	resp, err := client.api.Messages.New(ctx, params)
