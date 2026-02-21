@@ -8,6 +8,123 @@ import (
 	"testing"
 )
 
+// TestDefaultCompactor verifies the behaviour of the default session compactor.
+//
+// Session layout (indices after Add):
+//
+//	[0] SystemMessage       – never touched
+//	[1] UserMessage         – never touched
+//	[2] ThinkingMessage     – long → truncated  (2 assistants follow)
+//	[3] ThinkingMessage     – short → marked but content unchanged
+//	[4] ToolCallMessage     – long input → truncated
+//	[5] ToolResultMessage   – long output → truncated
+//	[6] AssistantMessage    – assistant #1, never touched
+//	[7] AssistantMessage    – assistant #2, never touched
+func TestDefaultCompactor(t *testing.T) {
+	const prefixLen = 200
+	long := strings.Repeat("a", prefixLen+50)
+	short := "brief"
+	longInput := json.RawMessage(`"` + long + `"`) // valid JSON string, over limit
+
+	s := Session{}
+	s.Add(
+		SystemMessage{"sys"},
+		UserMessage{"user"},
+		ThinkingMessage{Content: long},
+		ThinkingMessage{Content: short},
+		ToolCallMessage{ID: "c1", Name: "tool", Input: longInput},
+		ToolResultMessage{ID: "c1", Output: long},
+		AssistantMessage{"reply 1"},
+		AssistantMessage{"reply 2"},
+	)
+
+	compact := defaultCompactor()
+	s = compact(s)
+
+	// [0] SystemMessage untouched.
+	if _, ok := s.Messages[0].(SystemMessage); !ok {
+		t.Fatal("[0] SystemMessage changed type")
+	}
+
+	// [1] UserMessage untouched.
+	if _, ok := s.Messages[1].(UserMessage); !ok {
+		t.Fatal("[1] UserMessage changed type")
+	}
+
+	// [2] Long ThinkingMessage truncated with ellipsis.
+	tm := s.Messages[2].(ThinkingMessage)
+	if !strings.HasSuffix(tm.Content, "…") {
+		t.Errorf("[2] ThinkingMessage not compacted: %q", tm.Content)
+	}
+	if len(tm.Content) > prefixLen+len("…") {
+		t.Errorf("[2] ThinkingMessage too long after compaction: %d bytes", len(tm.Content))
+	}
+
+	// [3] Short ThinkingMessage content unchanged.
+	tm2 := s.Messages[3].(ThinkingMessage)
+	if tm2.Content != short {
+		t.Errorf("[3] short ThinkingMessage modified: %q", tm2.Content)
+	}
+
+	// [4] Long ToolCallMessage input compacted (JSON string containing ellipsis).
+	tc := s.Messages[4].(ToolCallMessage)
+	if !strings.Contains(string(tc.Input), "…") {
+		t.Errorf("[4] ToolCallMessage.Input not compacted: %s", tc.Input)
+	}
+
+	// [5] Long ToolResultMessage output truncated with ellipsis.
+	tr := s.Messages[5].(ToolResultMessage)
+	if !strings.HasSuffix(tr.Output, "…") {
+		t.Errorf("[5] ToolResultMessage not compacted: %q", tr.Output)
+	}
+	if len(tr.Output) > prefixLen+len("…") {
+		t.Errorf("[5] ToolResultMessage too long after compaction: %d bytes", len(tr.Output))
+	}
+
+	// [6], [7] AssistantMessages untouched.
+	for _, idx := range []int{6, 7} {
+		am, ok := s.Messages[idx].(AssistantMessage)
+		if !ok || am.Content == "" {
+			t.Errorf("[%d] AssistantMessage changed", idx)
+		}
+	}
+
+	// Second call: already-compacted messages must not change.
+	snapshot := make([]Message, len(s.Messages))
+	copy(snapshot, s.Messages)
+	s = compact(s)
+	for i, msg := range s.Messages {
+		got, _ := json.Marshal(msg)
+		want, _ := json.Marshal(snapshot[i])
+		if string(got) != string(want) {
+			t.Errorf("[%d] changed on second compaction:\n got  %s\n want %s", i, got, want)
+		}
+	}
+}
+
+// TestDefaultCompactorThreshold confirms that messages are not compacted when
+// fewer than two assistant responses follow them.
+func TestDefaultCompactorThreshold(t *testing.T) {
+	long := strings.Repeat("a", 300)
+
+	s := Session{}
+	s.Add(
+		ThinkingMessage{Content: long},  // only one assistant follows → must not compact
+		ToolResultMessage{Output: long}, // same
+		AssistantMessage{"only one"},    // assistant #1 — threshold not met
+	)
+
+	compact := defaultCompactor()
+	s = compact(s)
+
+	if tm := s.Messages[0].(ThinkingMessage); tm.Content != long {
+		t.Errorf("ThinkingMessage should not be compacted below threshold, got %q", tm.Content)
+	}
+	if tr := s.Messages[1].(ToolResultMessage); tr.Output != long {
+		t.Errorf("ToolResultMessage should not be compacted below threshold, got %q", tr.Output)
+	}
+}
+
 // TestAgentLoopAddition runs a single-tool agent loop and confirms the model
 // uses the add tool to produce a correct answer.
 func TestAgentLoopAddition(t *testing.T) {
