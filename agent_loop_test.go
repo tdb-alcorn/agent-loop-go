@@ -14,7 +14,7 @@ var noopTool = Tool{
 		Name:        "noop",
 		InputSchema: ToolInputSchema{Type: "object"},
 	},
-	Handler: func(json.RawMessage) (string, error) { return "ok", nil },
+	Handler: func(context.Context, json.RawMessage) (string, error) { return "ok", nil },
 }
 
 // mockInvoker builds an InvokeModelFunc from a fixed response sequence.
@@ -259,7 +259,7 @@ func TestAgentLoopAddition(t *testing.T) {
 				Required: []string{"a", "b"},
 			},
 		},
-		Handler: func(input json.RawMessage) (string, error) {
+		Handler: func(_ context.Context, input json.RawMessage) (string, error) {
 			var args struct {
 				A float64 `json:"a"`
 				B float64 `json:"b"`
@@ -327,7 +327,7 @@ func TestAgentLoopSubagent(t *testing.T) {
 				Required: []string{"fact"},
 			},
 		},
-		Handler: func(input json.RawMessage) (string, error) {
+		Handler: func(ctx context.Context, input json.RawMessage) (string, error) {
 			var args struct {
 				Fact string `json:"fact"`
 			}

@@ -8,9 +8,11 @@ import (
 )
 
 // ToolHandler processes a single tool call and returns a result string.
+// The context carries deadlines, cancellation signals, and request-scoped
+// values (e.g. auth or user information) from the caller.
 // Returning an error causes the result to be surfaced as an error string
 // in the session rather than failing the agent loop.
-type ToolHandler func(input json.RawMessage) (string, error)
+type ToolHandler func(ctx context.Context, input json.RawMessage) (string, error)
 
 // Tool pairs a generic tool definition with its handler function.
 type Tool struct {
@@ -29,7 +31,7 @@ func InitSession(systemPrompt, userPrompt string) Session {
 // ExecuteToolCalls runs all tool handlers concurrently (guide section 4) and
 // returns a ToolResultMessage for each call.  Handler errors are captured as
 // result strings so the agent loop can continue uninterrupted.
-func ExecuteToolCalls(calls []ToolCallMessage, handlers map[string]ToolHandler) []Message {
+func ExecuteToolCalls(ctx context.Context, calls []ToolCallMessage, handlers map[string]ToolHandler) []Message {
 	results := make([]Message, len(calls))
 	var wg sync.WaitGroup
 	for i, call := range calls {
@@ -41,7 +43,7 @@ func ExecuteToolCalls(calls []ToolCallMessage, handlers map[string]ToolHandler) 
 			if !ok {
 				output = fmt.Sprintf("Error: unknown tool %q", call.Name)
 			} else {
-				out, err := handler(call.Input)
+				out, err := handler(ctx, call.Input)
 				if err != nil {
 					output = "Error: " + err.Error()
 				} else {
@@ -212,7 +214,7 @@ func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, s
 			return session, fmt.Errorf("agent loop reached maximum iterations (%d)", cfg.maxIterations)
 		}
 
-		results := ExecuteToolCalls(toolCalls, handlers)
+		results := ExecuteToolCalls(ctx, toolCalls, handlers)
 		session.Add(results...)
 		if cfg.logFunc != nil {
 			for _, m := range results {
