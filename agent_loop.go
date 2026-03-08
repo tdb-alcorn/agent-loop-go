@@ -129,15 +129,9 @@ func defaultCompactor() CompactFunc {
 				}
 				compacted[i] = true
 			case ToolCallMessage:
-				if compacted[i] || assistantsSeen < assistantThreshold {
-					continue
-				}
-				raw := string(m.Input)
-				if len(raw) > prefixLen {
-					truncated, _ := json.Marshal(raw[:prefixLen] + "…")
-					m.Input = truncated
-					s.Messages[i] = m
-				}
+				// Skip compaction of tool call inputs — truncating
+				// json.RawMessage produces invalid JSON that causes
+				// 400 errors from the Anthropic API.
 				compacted[i] = true
 			case ToolResultMessage:
 				if compacted[i] || assistantsSeen < assistantThreshold {

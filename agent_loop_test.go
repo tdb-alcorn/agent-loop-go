@@ -132,7 +132,7 @@ func TestUsageCheckerAccumulates(t *testing.T) {
 //	[1] UserMessage         – never touched
 //	[2] ThinkingMessage     – long → truncated  (2 assistants follow)
 //	[3] ThinkingMessage     – short → marked but content unchanged
-//	[4] ToolCallMessage     – long input → truncated
+//	[4] ToolCallMessage     – long input → NOT truncated (preserves valid JSON)
 //	[5] ToolResultMessage   – long output → truncated
 //	[6] AssistantMessage    – assistant #1, never touched
 //	[7] AssistantMessage    – assistant #2, never touched
@@ -182,10 +182,11 @@ func TestDefaultCompactor(t *testing.T) {
 		t.Errorf("[3] short ThinkingMessage modified: %q", tm2.Content)
 	}
 
-	// [4] Long ToolCallMessage input compacted (JSON string containing ellipsis).
+	// [4] ToolCallMessage input left intact (truncating json.RawMessage
+	// produces invalid JSON that causes API 400 errors).
 	tc := s.Messages[4].(ToolCallMessage)
-	if !strings.Contains(string(tc.Input), "…") {
-		t.Errorf("[4] ToolCallMessage.Input not compacted: %s", tc.Input)
+	if string(tc.Input) != string(longInput) {
+		t.Errorf("[4] ToolCallMessage.Input was modified: got %s, want %s", tc.Input, longInput)
 	}
 
 	// [5] Long ToolResultMessage output truncated with ellipsis.
