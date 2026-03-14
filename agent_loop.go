@@ -184,6 +184,8 @@ func AgentLoop(ctx context.Context, invokeModel InvokeModelFunc, tools []Tool, s
 		}
 		totalUsage.InputTokens += usage.InputTokens
 		totalUsage.OutputTokens += usage.OutputTokens
+		totalUsage.CacheCreationInputTokens += usage.CacheCreationInputTokens
+		totalUsage.CacheReadInputTokens += usage.CacheReadInputTokens
 		session.Add(newMsgs...)
 		if cfg.logFunc != nil {
 			for _, m := range newMsgs {

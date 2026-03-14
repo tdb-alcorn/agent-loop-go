@@ -62,7 +62,7 @@ func TestUsageCheckerHalts(t *testing.T) {
 	}
 
 	// Checker called twice: {0,0}→continue, {100,50}→halt.
-	wantReceived := []Usage{{0, 0}, {100, 50}}
+	wantReceived := []Usage{{0, 0, 0, 0}, {100, 50, 0, 0}}
 	if len(received) != len(wantReceived) {
 		t.Fatalf("checker called %d time(s), want %d; got %v", len(received), len(wantReceived), received)
 	}
@@ -88,9 +88,9 @@ func TestUsageCheckerAccumulates(t *testing.T) {
 		msgs  []Message
 		usage Usage
 	}{
-		{[]Message{tc("c1")}, Usage{100, 40}},
-		{[]Message{tc("c2")}, Usage{200, 80}},
-		{[]Message{AssistantMessage{"done"}}, Usage{50, 20}},
+		{[]Message{tc("c1")}, Usage{100, 40, 0, 0}},
+		{[]Message{tc("c2")}, Usage{200, 80, 0, 0}},
+		{[]Message{AssistantMessage{"done"}}, Usage{50, 20, 0, 0}},
 	})
 
 	var received []Usage
@@ -110,9 +110,54 @@ func TestUsageCheckerAccumulates(t *testing.T) {
 
 	// Three iterations → checker called three times with running totals.
 	wantReceived := []Usage{
-		{0, 0},    // before iter 1
-		{100, 40}, // before iter 2
-		{300, 120}, // before iter 3
+		{0, 0, 0, 0},     // before iter 1
+		{100, 40, 0, 0},  // before iter 2
+		{300, 120, 0, 0}, // before iter 3
+	}
+	if len(received) != len(wantReceived) {
+		t.Fatalf("checker called %d time(s), want %d; got %v", len(received), len(wantReceived), received)
+	}
+	for i, got := range received {
+		if got != wantReceived[i] {
+			t.Errorf("checker call %d: got %+v, want %+v", i, got, wantReceived[i])
+		}
+	}
+}
+
+// TestCacheUsageAccumulates verifies that CacheCreationInputTokens and
+// CacheReadInputTokens are summed across agent loop iterations.
+func TestCacheUsageAccumulates(t *testing.T) {
+	tc := func(id string) ToolCallMessage {
+		return ToolCallMessage{ID: id, Name: "noop", Input: json.RawMessage(`{}`)}
+	}
+	invoker := mockInvoker([]struct {
+		msgs  []Message
+		usage Usage
+	}{
+		{[]Message{tc("c1")}, Usage{100, 40, 50, 0}},
+		{[]Message{tc("c2")}, Usage{80, 30, 0, 50}},
+		{[]Message{AssistantMessage{"done"}}, Usage{60, 20, 0, 45}},
+	})
+
+	var received []Usage
+	checker := func(u Usage) bool {
+		received = append(received, u)
+		return false
+	}
+
+	session := InitSession("sys", "user")
+	_, err := AgentLoop(context.Background(), invoker, []Tool{noopTool}, session,
+		WithUsageChecker(checker),
+		WithCompactor(nil),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wantReceived := []Usage{
+		{0, 0, 0, 0},       // before iter 1
+		{100, 40, 50, 0},   // before iter 2
+		{180, 70, 50, 50},  // before iter 3
 	}
 	if len(received) != len(wantReceived) {
 		t.Fatalf("checker called %d time(s), want %d; got %v", len(received), len(wantReceived), received)

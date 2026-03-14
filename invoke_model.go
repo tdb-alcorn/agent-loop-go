@@ -8,8 +8,10 @@ import (
 
 // Usage holds token consumption figures from a single model invocation.
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
+	InputTokens              int64
+	OutputTokens             int64
+	CacheCreationInputTokens int64
+	CacheReadInputTokens     int64
 }
 
 // InvokeModelFunc is the generic model invocation interface used by AgentLoop.
@@ -57,13 +59,16 @@ func invokeClaude(ctx context.Context, client *Claude, tools []ToolDefinition, s
 		Messages:  messages,
 	}
 	if len(system) > 0 {
+		system[len(system)-1].CacheControl = anthropic.NewCacheControlEphemeralParam()
 		params.System = system
 	}
 	if cfg.thinking != nil {
 		params.Thinking = anthropic.ThinkingConfigParamOfEnabled(*cfg.thinking)
 	}
 	if len(tools) > 0 {
-		params.Tools = toolDefsToParams(tools)
+		toolParams := toolDefsToParams(tools)
+		toolParams[len(toolParams)-1].OfTool.CacheControl = anthropic.NewCacheControlEphemeralParam()
+		params.Tools = toolParams
 	}
 
 	resp, err := client.api.Messages.New(ctx, params)
@@ -71,8 +76,10 @@ func invokeClaude(ctx context.Context, client *Claude, tools []ToolDefinition, s
 		return nil, Usage{}, err
 	}
 	usage := Usage{
-		InputTokens:  resp.Usage.InputTokens,
-		OutputTokens: resp.Usage.OutputTokens,
+		InputTokens:              resp.Usage.InputTokens,
+		OutputTokens:             resp.Usage.OutputTokens,
+		CacheCreationInputTokens: resp.Usage.CacheCreationInputTokens,
+		CacheReadInputTokens:     resp.Usage.CacheReadInputTokens,
 	}
 	return responseToMessages(resp), usage, nil
 }
